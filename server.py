@@ -1,5 +1,5 @@
 #  coding: utf-8 
-import socketserver
+import os, socketserver
 
 # Copyright 2013 Abram Hindle, Eddie Antonio Santos
 # 
@@ -31,14 +31,13 @@ class MyWebServer(socketserver.BaseRequestHandler):
     
     def handle(self):
         self.data = self.request.recv(1024).strip().decode()
-        print ("Got a request of: %s\n" % self.data)
+        # print ("Got a request of: %s\n" % self.data)
         # self.request.sendall(bytearray("OK",'utf-8'))
 
         header = self.data.split('\n')
         request_line = header[0].split()
         method = request_line[0]
         uri = request_line[1]
-        print(uri)
 
         response = ''
         if method != "GET":
@@ -47,10 +46,21 @@ class MyWebServer(socketserver.BaseRequestHandler):
         else:
             if uri[-1] == '/':
                 uri += "index.html"
-            
+
+            # https://stackoverflow.com/a/5137509
+            root_dir = os.path.dirname(os.path.realpath(__file__))
+            root_dir = os.path.join(root_dir, "www")
+            uri_path = os.path.abspath(os.path.join(root_dir, uri[1:]))
+
+            # https://stackoverflow.com/q/3812849
+            if os.path.commonpath([root_dir, uri_path]) != root_dir:
+                response = self.get_header(404,)
+                response += "404 Error"
+                self.request.sendall(response.encode())
+                return
             
             try:
-                file_path = open("www" + uri)
+                file_path = open(uri_path)
             except FileNotFoundError:
                 response = self.get_header(404,)
                 response += "404 Error"
