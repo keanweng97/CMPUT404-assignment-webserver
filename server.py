@@ -31,72 +31,100 @@ class MyWebServer(socketserver.BaseRequestHandler):
     
     def handle(self):
         self.data = self.request.recv(1024).strip().decode()
-        # print ("Got a request of: %s\n" % self.data)
-        # self.request.sendall(bytearray("OK",'utf-8'))
+        # print ("Got a request of:\n%s\n" % self.data)
 
-        header = self.data.split('\n')
-        request_line = header[0].split()
-        method = request_line[0]
-        uri = request_line[1]
+        # if empty request, don't do anything
+        if self.data:
+            # split to get method and uri
+            header = self.data.split('\n')
+            request_line = header[0].split()
+            method = request_line[0]
+            self.uri = request_line[1]
+        else:
+            return
 
         response = ''
         if method != "GET":
+            # status 405 for unsupported methods
             response = self.get_header(405,)
             self.request.sendall(response.encode())
         else:
-            if uri[-1] == '/':
-                uri += "index.html"
+            # append index.html for directories (assume xxx/ are all
+            # directories)
+            if self.uri[-1] == '/':
+                self.uri += "index.html"
 
-            # https://stackoverflow.com/a/5137509
+            # inteligently convert paths to absolute paths
+            # Taken from Russel Dias from https://stackoverflow.com/a/5137509
+            # on Jan 27, 2020
             root_dir = os.path.dirname(os.path.realpath(__file__))
             root_dir = os.path.join(root_dir, "www")
-            uri_path = os.path.abspath(os.path.join(root_dir, uri[1:]))
-
-            # https://stackoverflow.com/q/3812849
+            uri_path = os.path.abspath(os.path.join(root_dir, self.uri[1:]))
+            # check if uri_path is a subpath of root_dir, return 404 is uri is
+            # not in www/, commonpath() returns longest common sub-path
+            # Taken from Simon from https://stackoverflow.com/q/3812849 on
+            # Jan 27, 2020
             if os.path.commonpath([root_dir, uri_path]) != root_dir:
-                response = self.get_header(404,)
-                response += "404 Error"
+                response = self.get_header(404)
+                response += "<h1>404 Error</h1>"
                 self.request.sendall(response.encode())
                 return
-            
+
             try:
                 file_path = open(uri_path)
+            # if file not found, return status 404
             except FileNotFoundError:
-                response = self.get_header(404,)
-                response += "404 Error"
+                response = self.get_header(404)
+                response += "<h1>404 Error</h1>"
                 self.request.sendall(response.encode())
                 return
+            # if uri is a directory but without '/', we redirect using status
+            # 301
             except IsADirectoryError:
-                response = self.get_header(301,)
-                response += f"Location: {uri}/\n\n"
+                response = self.get_header(301)
                 self.request.sendall(response.encode())
                 return
-            
+            # read file content and close file
             content = file_path.read()
             file_path.close()
-
-            if uri[-4:] == '.css':
-                response = self.get_header(200, "text/css")
-            if (uri[-5:] == '.html' and response == ''):
-                response = self.get_header(200, "text/html")
-
+            response = self.get_header(200)
+            # append content to header and send
             response += content
             self.request.sendall(response.encode())
 
-    def get_header(self, status_code, mime_type = "text/html"):
+
+    def get_header(self, status_code):
+        """
+        Returns header based on status codes
+
+        Parameters
+        ----------
+        status_code : int
+            Status code in HTTP response
+
+        Returns
+        -------
+        header : str
+            Header to be sent to client in HTTP response
+        """
         header = "HTTP/1.1 "
         if status_code == 200:
             header += "200 OK\n"
         elif status_code == 301:
             header += "301 Moved Permanently\n"
+            # redirect to directory by appending '/'
+            header += f"Location: {self.uri}/\n\n"
         elif status_code == 404:
             header += "404 Not Found\n"
         elif status_code == 405:
             header += "405 Method Not Allowed\n"
         
         header += "Server: Simple Python Server\n"
-        if status_code != 301:
-            header += f"Content-Type: {mime_type}\n\n"
+        # CSS mime-type, defaults to html
+        if self.uri[-4:] == ".css":
+            header += "Content-Type: text/css\n\n"
+        else:
+            header += "Content-Type: text/html\n\n"
 
         return header 
 
