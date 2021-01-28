@@ -113,7 +113,7 @@ class MyWebServer(socketserver.BaseRequestHandler):
         elif status_code == 301:
             header += "301 Moved Permanently\n"
             # redirect to directory by appending '/'
-            header += f"Location: {self.uri}/\n\n"
+            header += "Location: " + self.uri + "/\n\n"
         elif status_code == 404:
             header += "404 Not Found\n"
         elif status_code == 405:
